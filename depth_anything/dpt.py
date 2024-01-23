@@ -1,6 +1,6 @@
+import os
 import torch
 import torch.nn as nn
-
 from .blocks import FeatureFusionBlock, _make_scratch
 import torch.nn.functional as F
 
@@ -142,7 +142,9 @@ class DPT_DINOv2(nn.Module):
         
         # in case the Internet connection is not stable, please load the DINOv2 locally
         if localhub:
-            self.pretrained = torch.hub.load('torchhub/facebookresearch_dinov2_main', 'dinov2_{:}14'.format(encoder), source='local', pretrained=False)
+            dinov2_path = os.path.join(os.path.dirname(__file__), "..",
+                                       "torchhub", "facebookresearch_dinov2_main")
+            self.pretrained = torch.hub.load(dinov2_path, 'dinov2_{:}14'.format(encoder), source='local', pretrained=False)
         else:
             self.pretrained = torch.hub.load('facebookresearch/dinov2', 'dinov2_{:}14'.format(encoder))
         
@@ -167,4 +169,3 @@ class DPT_DINOv2(nn.Module):
 if __name__ == '__main__':
     depth_anything = DPT_DINOv2()
     depth_anything.load_state_dict(torch.load('checkpoints/depth_anything_dinov2_vitl14.pth'))
-    
