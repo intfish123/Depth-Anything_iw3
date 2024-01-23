@@ -69,10 +69,18 @@ if __name__ == "__main__":
     parser.add_argument("--encoder", type=str, default="vitb", choices=["vits", "vitb", "vitl"],
                         help="encoder")
     parser.add_argument("--fp16", action="store_true", help="use fp16")
+    parser.add_argument("--remote", action="store_true", help="use remote repo")
+    parser.add_argument("--reload", action="store_true", help="reload remote repo")
     args = parser.parse_args()
 
-    model = torch.hub.load("./", "DepthAnything", encoder=args.encoder, source="local", trust_repo=True).cuda()
-    transform = torch.hub.load("./", "transforms_cv2", source="local", trust_repo=True)
+    if not args.remote:
+        model = torch.hub.load("./", "DepthAnything", encoder=args.encoder, source="local", trust_repo=True).cuda()
+        transform = torch.hub.load("./", "transforms_cv2", source="local", trust_repo=True)
+    else:
+        force_reload = bool(args.reload)
+        model = torch.hub.load("nagadomi/Depth-Anything_iw3", "DepthAnything", encoder=args.encoder,
+                               force_reload=force_reload, trust_repo=True).cuda()
+        transform = torch.hub.load("nagadomi/Depth-Anything_iw3", "transforms_cv2", trust_repo=True)
 
     image = cv2.imread(args.input, cv2.IMREAD_COLOR)
     h, w = image.shape[:2]
