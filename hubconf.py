@@ -35,12 +35,25 @@ def transforms_cv2():
     from depth_anything.util.transform import Resize, NormalizeImage, PrepareForNet
     import cv2
 
+    class PackImage():
+        def __call__(self, image):
+            return {"image": image}
+
+    class UnpackImage():
+        def __call__(self, sample):
+            return sample["image"]
+
     class BGRToRGBFloat():
         def __call__(self, sample):
             sample["image"] = cv2.cvtColor(sample["image"], cv2.COLOR_BGR2RGB) / 255.0
             return sample
 
+    class ToTensor():
+        def __call__(self, image):
+            return torch.from_numpy(image)
+
     transform = Compose([
+        PackImage(),
         BGRToRGBFloat(),
         Resize(
             width=518,
@@ -53,13 +66,49 @@ def transforms_cv2():
         ),
         NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         PrepareForNet(),
+        UnpackImage(),
+        ToTensor(),
+    ])
+    return transform
+
+
+def transforms_pil(lower_bound=518):
+    import torchvision.transforms.functional as TF
+    from torchvision.transforms import Compose, Normalize, ToTensor, InterpolationMode
+
+    class ModConstraintLowerBoundResize():
+        def __init__(self, lower_bound=518, ensure_multiple_of=14):
+            self.lower_bound = lower_bound
+            self.ensure_multiple_of = ensure_multiple_of
+
+        def __call__(self, x):
+            if torch.is_tensor(x):
+                # CHW tensor
+                h, w = x.shape[-2:]
+            else:
+                # PIL.Image.Image
+                h, w = x.height, x.width
+            if w < h:
+                scale_factor = self.lower_bound / w
+            else:
+                scale_factor = self.lower_bound / h
+            new_h = int(h * scale_factor)
+            new_w = int(w * scale_factor)
+            new_h -= new_h % self.ensure_multiple_of
+            new_w -= new_w % self.ensure_multiple_of
+            x = TF.resize(x, (new_h, new_w), interpolation=InterpolationMode.BICUBIC, antialias=True)
+            return x
+
+    transform = Compose([
+        ModConstraintLowerBoundResize(lower_bound, ensure_multiple_of=14),
+        ToTensor(),
+        Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
     return transform
 
 
 if __name__ == "__main__":
     import argparse
-    import cv2
     import torch.nn.functional as F
     import numpy as np
 
@@ -71,21 +120,35 @@ if __name__ == "__main__":
     parser.add_argument("--fp16", action="store_true", help="use fp16")
     parser.add_argument("--remote", action="store_true", help="use remote repo")
     parser.add_argument("--reload", action="store_true", help="reload remote repo")
+    parser.add_argument("--pil", action="store_true", help="use PIL instead of OpenCV")
     args = parser.parse_args()
 
     if not args.remote:
-        model = torch.hub.load("./", "DepthAnything", encoder=args.encoder, source="local", trust_repo=True).cuda()
-        transform = torch.hub.load("./", "transforms_cv2", source="local", trust_repo=True)
+        model = torch.hub.load("./", "DepthAnything", encoder=args.encoder,
+                               source="local", trust_repo=True).cuda()
+        if args.pil:
+            transforms = torch.hub.load("./", "transforms_pil", source="local", trust_repo=True)
+        else:
+            transforms = torch.hub.load("./", "transforms_cv2", source="local", trust_repo=True)
     else:
         force_reload = bool(args.reload)
         model = torch.hub.load("nagadomi/Depth-Anything_iw3", "DepthAnything", encoder=args.encoder,
                                force_reload=force_reload, trust_repo=True).cuda()
-        transform = torch.hub.load("nagadomi/Depth-Anything_iw3", "transforms_cv2", trust_repo=True)
+        if args.pil:
+            transforms = torch.hub.load("nagadomi/Depth-Anything_iw3", "transforms_pil", trust_repo=True)
+        else:
+            transforms = torch.hub.load("nagadomi/Depth-Anything_iw3", "transforms_cv2", trust_repo=True)
 
-    image = cv2.imread(args.input, cv2.IMREAD_COLOR)
-    h, w = image.shape[:2]
-    image = transform({'image': image})['image']
-    image = torch.from_numpy(image).unsqueeze(0).cuda()
+    if args.pil:
+        import PIL
+        image = PIL.Image.open(args.input).convert("RGB")
+        h, w = image.height, image.width
+        image = transforms(image).unsqueeze(0).cuda()
+    else:
+        import cv2
+        image = cv2.imread(args.input, cv2.IMREAD_COLOR)
+        h, w = image.shape[:2]
+        image = transforms(image).unsqueeze(0).cuda()
 
     if args.fp16:
         model = model.half()
@@ -95,8 +158,14 @@ if __name__ == "__main__":
         depth = model(image)
         depth = F.interpolate(depth.unsqueeze(0), (h, w), mode='bilinear', align_corners=False)
         depth = depth.squeeze(dim=[0, 1])
-        depth = (depth - depth.min()) / (depth.max() - depth.min() + 1e-6) * 255.0
-    depth = depth.cpu().numpy().astype(np.uint8)
-    depth_color = cv2.applyColorMap(depth, cv2.COLORMAP_INFERNO)
+        depth = (depth - depth.min()) / (depth.max() - depth.min() + 1e-6)
 
-    cv2.imwrite(args.output, depth_color)
+    if args.pil:
+        import torchvision.transforms.functional as TF
+        depth = TF.to_pil_image(depth.cpu())
+        # No color map
+        depth.save(args.output)
+    else:
+        depth = (depth * 255).cpu().numpy().astype(np.uint8)
+        depth_color = cv2.applyColorMap(depth, cv2.COLORMAP_INFERNO)
+        cv2.imwrite(args.output, depth_color)
