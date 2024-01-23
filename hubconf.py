@@ -96,6 +96,10 @@ def transforms_pil(lower_bound=518):
             new_w = int(w * scale_factor)
             new_h -= new_h % self.ensure_multiple_of
             new_w -= new_w % self.ensure_multiple_of
+            if new_h < self.lower_bound:
+                new_h = self.lower_bound
+            if new_w < self.lower_bound:
+                new_w = self.lower_bound
             x = TF.resize(x, (new_h, new_w), interpolation=InterpolationMode.BICUBIC, antialias=True)
             return x
 
