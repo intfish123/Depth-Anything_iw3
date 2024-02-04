@@ -35,9 +35,11 @@ from zoedepth.utils.config import change_dataset, get_config, ALL_EVAL_DATASETS,
 from zoedepth.utils.misc import (RunningAverageDict, colors, compute_metrics,
                         count_parameters)
 
+_amp_dtype = torch.float16
+
 
 @torch.no_grad()
-def infer(model, images, **kwargs):
+def infer(model, images, use_amp=False, **kwargs):
     """Inference with flip augmentation"""
     # images.shape = N, C, H, W
     def get_depth_from_prediction(pred):
@@ -50,11 +52,11 @@ def infer(model, images, **kwargs):
         else:
             raise NotImplementedError(f"Unknown output type {type(pred)}")
         return pred
-
-    pred1 = model(images, **kwargs)
+    with torch.autocast(device_type="cuda", dtype=_amp_dtype, enabled=use_amp):
+        pred1 = model(images, **kwargs)
     pred1 = get_depth_from_prediction(pred1)
-
-    pred2 = model(torch.flip(images, [3]), **kwargs)
+    with torch.autocast(device_type="cuda", dtype=_amp_dtype, enabled=use_amp):
+        pred2 = model(torch.flip(images, [3]), **kwargs)
     pred2 = get_depth_from_prediction(pred2)
     pred2 = torch.flip(pred2, [3])
 
@@ -67,7 +69,7 @@ def infer(model, images, **kwargs):
 def evaluate(model, test_loader, config, round_vals=True, round_precision=3):
     model.eval()
     metrics = RunningAverageDict()
-    for i, sample in tqdm(enumerate(test_loader), total=len(test_loader)):
+    for i, sample in tqdm(enumerate(test_loader), total=len(test_loader), ncols=80):
         if 'has_valid_depth' in sample:
             if not sample['has_valid_depth']:
                 continue
@@ -76,7 +78,7 @@ def evaluate(model, test_loader, config, round_vals=True, round_precision=3):
         depth = depth.squeeze().unsqueeze(0).unsqueeze(0)
         focal = sample.get('focal', torch.Tensor(
             [715.0873]).cuda())  # This magic number (focal) is only used for evaluating BTS model
-        pred = infer(model, image, dataset=sample['dataset'][0], focal=focal)
+        pred = infer(model, image, dataset=sample['dataset'][0], focal=focal, use_amp=config.use_amp)
 
         # Save image, depth, pred for visualization
         if "save_images" in config and config.save_images:
@@ -108,6 +110,7 @@ def evaluate(model, test_loader, config, round_vals=True, round_precision=3):
     return metrics
 
 def main(config):
+    print(config)
     model = build_model(config)
     test_loader = DepthDataLoader(config, 'online_eval').data
     model = model.cuda()
@@ -139,9 +142,15 @@ if __name__ == '__main__':
                         required=False, default="", help="Pretrained resource to use for fetching weights. If not set, default resource from model config is used,  Refer models.model_io.load_state_from_resource for more details.")
     parser.add_argument("-d", "--dataset", type=str, required=False,
                         default='nyu', help="Dataset to evaluate on")
+    parser.add_argument("--amp_dtype", type=str, default="f16", choices=["fp16", "bf16"])
 
     args, unknown_args = parser.parse_known_args()
     overwrite_kwargs = parse_unknown(unknown_args)
+
+    if args.amp_dtype == "fp16":
+        _amp_dtype = torch.float16
+    elif args.amp_dtype == "bf16":
+        _amp_dtype = torch.bfloat16
 
     if "ALL_INDOOR" in args.dataset:
         datasets = ALL_INDOOR
