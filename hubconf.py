@@ -1,4 +1,5 @@
 import torch
+from os import path
 
 
 def _load_state_dict(encoder, **kwargs):
@@ -28,6 +29,14 @@ def DepthAnything(encoder, localhub=True):
     depth_anything.load_state_dict(_load_state_dict(encoder), strict=True)
 
     return depth_anything
+
+
+def DepthAnythingMetricDepth(model_type="indoor", remove_prep=True):
+    model = torch.hub.load(path.join(path.dirname(__file__), "metric_depth"),
+                           "DepthAnythingMetricDepth",
+                           model_type=model_type, remove_prep=remove_prep,
+                           source="local")
+    return model
 
 
 def transforms_cv2():
@@ -120,24 +129,37 @@ if __name__ == "__main__":
     parser.add_argument("--input", "-i", type=str, required=True, help="input image file")
     parser.add_argument("--output", "-o", type=str, required=True, help="output image file")
     parser.add_argument("--encoder", type=str, default="vitb", choices=["vits", "vitb", "vitl"],
-                        help="encoder")
+                        help="encoder for relative depth model")
     parser.add_argument("--fp16", action="store_true", help="use fp16")
     parser.add_argument("--remote", action="store_true", help="use remote repo")
     parser.add_argument("--reload", action="store_true", help="reload remote repo")
     parser.add_argument("--pil", action="store_true", help="use PIL instead of OpenCV")
+    parser.add_argument("--metric", action="store_true", help="use metric depth model")
+    parser.add_argument("--metric-model-type", default="indoor", choices=["indoor", "outdoor"],
+                        help="model_type for metric depth")
     args = parser.parse_args()
 
     if not args.remote:
-        model = torch.hub.load("./", "DepthAnything", encoder=args.encoder,
-                               source="local", trust_repo=True).cuda()
-        if args.pil:
-            transforms = torch.hub.load("./", "transforms_pil", source="local", trust_repo=True)
+        if not args.metric:
+            model = torch.hub.load(".", "DepthAnything", encoder=args.encoder,
+                                   source="local", trust_repo=True).cuda()
         else:
-            transforms = torch.hub.load("./", "transforms_cv2", source="local", trust_repo=True)
+            model = torch.hub.load(".", "DepthAnythingMetricDepth", model_type=args.metric_model_type,
+                                   source="local", trust_repo=True).cuda()
+        if args.pil:
+            transforms = torch.hub.load(".", "transforms_pil", source="local", trust_repo=True)
+        else:
+            transforms = torch.hub.load(".", "transforms_cv2", source="local", trust_repo=True)
     else:
         force_reload = bool(args.reload)
-        model = torch.hub.load("nagadomi/Depth-Anything_iw3", "DepthAnything", encoder=args.encoder,
-                               force_reload=force_reload, trust_repo=True).cuda()
+        if not args.metric:
+            model = torch.hub.load("nagadomi/Depth-Anything_iw3", "DepthAnything",
+                                   encoder=args.encoder,
+                                   force_reload=force_reload, trust_repo=True).cuda()
+        else:
+            model = torch.hub.load("nagadomi/Depth-Anything_iw3", "DepthAnythingMetricDepth",
+                                   model_type=args.metric_model_type,
+                                   force_reload=force_reload, trust_repo=True).cuda()
         if args.pil:
             transforms = torch.hub.load("nagadomi/Depth-Anything_iw3", "transforms_pil", trust_repo=True)
         else:
@@ -160,7 +182,11 @@ if __name__ == "__main__":
 
     with torch.inference_mode():
         depth = model(image)
-        depth = F.interpolate(depth.unsqueeze(0), (h, w), mode='bilinear', align_corners=False)
+        if not args.metric:
+            depth = depth.unsqueeze(0)
+        else:
+            depth = depth["metric_depth"].neg()
+        depth = F.interpolate(depth, (h, w), mode='bilinear', align_corners=False)
         depth = depth.squeeze(dim=[0, 1])
         depth = (depth - depth.min()) / (depth.max() - depth.min() + 1e-6)
 
