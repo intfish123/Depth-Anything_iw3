@@ -26,7 +26,6 @@ import argparse
 from pprint import pprint
 
 import torch
-from zoedepth.utils.easydict import EasyDict as edict
 from tqdm import tqdm
 
 from zoedepth.data.data_mono import DepthDataLoader
