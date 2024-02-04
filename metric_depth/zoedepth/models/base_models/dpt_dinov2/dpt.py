@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 
@@ -136,9 +137,11 @@ class DPT_DINOv2(nn.Module):
         super(DPT_DINOv2, self).__init__()
 
         # torch.manual_seed(1)
-        
-        self.pretrained = torch.hub.load('../torchhub/facebookresearch_dinov2_main', 'dinov2_{:}14'.format(encoder), source='local', pretrained=False)
-        
+        dinov2_path = os.path.join(os.path.dirname(__file__), *([".."] * 5),
+                                   "torchhub/facebookresearch_dinov2_main")
+        self.pretrained = torch.hub.load(dinov2_path, 'dinov2_{:}14'.format(encoder),
+                                         source='local', pretrained=False)
+
         dim = self.pretrained.blocks[0].attn.qkv.in_features
         
         self.depth_head = DPTHead(dim, features, use_bn, out_channels=out_channels, use_clstoken=use_clstoken)
