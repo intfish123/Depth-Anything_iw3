@@ -254,9 +254,10 @@ class ZoeDepth(DepthModel):
                                        train_midas=train_midas, fetch_features=True, freeze_bn=freeze_midas_bn, **kwargs)
         
         model = ZoeDepth(core, **kwargs)
-        if pretrained_resource:
-            assert isinstance(pretrained_resource, str), "pretrained_resource must be a string"
-            model = load_state_from_resource(model, pretrained_resource)
+        if pretrained_resource is None:
+            raise ValueError("training is not supported")
+        assert isinstance(pretrained_resource, str), "pretrained_resource must be a string"
+        model = load_state_from_resource(model, pretrained_resource)
         return model
 
     @staticmethod
