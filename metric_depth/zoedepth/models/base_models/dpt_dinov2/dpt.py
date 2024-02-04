@@ -135,7 +135,7 @@ class DPT_DINOv2(nn.Module):
 
         super(DPT_DINOv2, self).__init__()
 
-        torch.manual_seed(1)
+        # torch.manual_seed(1)
         
         self.pretrained = torch.hub.load('../torchhub/facebookresearch_dinov2_main', 'dinov2_{:}14'.format(encoder), source='local', pretrained=False)
         
