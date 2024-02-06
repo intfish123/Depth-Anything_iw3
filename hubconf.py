@@ -120,7 +120,7 @@ def transforms_pil(lower_bound=518):
     return transform
 
 
-if __name__ == "__main__":
+def _test_run():
     import argparse
     import torch.nn.functional as F
     import numpy as np
@@ -199,3 +199,7 @@ if __name__ == "__main__":
         depth = (depth * 255).cpu().numpy().astype(np.uint8)
         depth_color = cv2.applyColorMap(depth, cv2.COLORMAP_INFERNO)
         cv2.imwrite(args.output, depth_color)
+
+
+if __name__ == "__main__":
+    _test_run()
