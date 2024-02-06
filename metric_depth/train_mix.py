@@ -22,12 +22,12 @@
 
 # File author: Shariq Farooq Bhat
 
-from zoedepth.utils.misc import count_parameters, parallelize
-from zoedepth.utils.config import get_config
-from zoedepth.utils.arg_utils import parse_unknown
-from zoedepth.trainers.builder import get_trainer
-from zoedepth.models.builder import build_model
-from zoedepth.data.data_mono import MixedNYUKITTI
+from zoedepth_depth_anything.utils.misc import count_parameters, parallelize
+from zoedepth_depth_anything.utils.config import get_config
+from zoedepth_depth_anything.utils.arg_utils import parse_unknown
+from zoedepth_depth_anything.trainers.builder import get_trainer
+from zoedepth_depth_anything.models.builder import build_model
+from zoedepth_depth_anything.data.data_mono import MixedNYUKITTI
 import torch.utils.data.distributed
 import torch.multiprocessing as mp
 import torch
@@ -66,7 +66,7 @@ def load_ckpt(config, model, checkpoint_dir="./checkpoints", ckpt_type="best"):
     import glob
     import os
 
-    from zoedepth.models.model_io import load_wts
+    from zoedepth_depth_anything.models.model_io import load_wts
 
     if hasattr(config, "checkpoint"):
         checkpoint = config.checkpoint

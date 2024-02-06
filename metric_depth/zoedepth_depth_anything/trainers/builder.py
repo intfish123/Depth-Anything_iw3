@@ -36,13 +36,13 @@ def get_trainer(config):
         ValueError: If the specified trainer does not exist under trainers/ folder
 
     Returns:
-        Trainer (inherited from zoedepth.trainers.BaseTrainer): The Trainer object
+        Trainer (inherited from zoedepth_depth_anything.trainers.BaseTrainer): The Trainer object
     """
     assert "trainer" in config and config.trainer is not None and config.trainer != '', "Trainer not specified. Config: {0}".format(
         config)
     try:
         Trainer = getattr(import_module(
-            f"zoedepth.trainers.{config.trainer}_trainer"), 'Trainer')
+            f"zoedepth_depth_anything.trainers.{config.trainer}_trainer"), 'Trainer')
     except ModuleNotFoundError as e:
         raise ValueError(f"Trainer {config.trainer}_trainer not found.") from e
     return Trainer

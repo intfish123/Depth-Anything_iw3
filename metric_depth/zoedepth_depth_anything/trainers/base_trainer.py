@@ -37,8 +37,8 @@ import torch.optim as optim
 import wandb
 from tqdm import tqdm
 
-from zoedepth.utils.config import flatten
-from zoedepth.utils.misc import RunningAverageDict, colorize, colors
+from zoedepth_depth_anything.utils.config import flatten
+from zoedepth_depth_anything.utils.misc import RunningAverageDict, colorize, colors
 
 
 def is_rank_zero(args):
@@ -72,7 +72,7 @@ class BaseTrainer:
         import glob
         import os
 
-        from zoedepth.models.model_io import load_wts
+        from zoedepth_depth_anything.models.model_io import load_wts
 
         if hasattr(self.config, "checkpoint"):
             checkpoint = self.config.checkpoint
