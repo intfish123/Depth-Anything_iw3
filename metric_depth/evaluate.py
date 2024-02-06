@@ -28,11 +28,11 @@ from pprint import pprint
 import torch
 from tqdm import tqdm
 
-from zoedepth.data.data_mono import DepthDataLoader
-from zoedepth.models.builder import build_model
-from zoedepth.utils.arg_utils import parse_unknown
-from zoedepth.utils.config import change_dataset, get_config, ALL_EVAL_DATASETS, ALL_INDOOR, ALL_OUTDOOR
-from zoedepth.utils.misc import (RunningAverageDict, colors, compute_metrics,
+from zoedepth_depth_anything.data.data_mono import DepthDataLoader
+from zoedepth_depth_anything.models.builder import build_model
+from zoedepth_depth_anything.utils.arg_utils import parse_unknown
+from zoedepth_depth_anything.utils.config import change_dataset, get_config, ALL_EVAL_DATASETS, ALL_INDOOR, ALL_OUTDOOR
+from zoedepth_depth_anything.utils.misc import (RunningAverageDict, colors, compute_metrics,
                         count_parameters)
 
 _amp_dtype = torch.float16
@@ -86,7 +86,7 @@ def evaluate(model, test_loader, config, round_vals=True, round_precision=3):
             # print("Saving images ...")
             from PIL import Image
             import torchvision.transforms as transforms
-            from zoedepth.utils.misc import colorize
+            from zoedepth_depth_anything.utils.misc import colorize
 
             os.makedirs(config.save_images, exist_ok=True)
             # def save_image(img, path):
