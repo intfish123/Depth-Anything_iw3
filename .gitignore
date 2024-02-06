@@ -1,5 +1,6 @@
 *~
 /tmp
+/metric_depth/checkpoints
 
 # ----- Python.gitignore
 # Byte-compiled / optimized / DLL files
