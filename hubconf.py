@@ -81,7 +81,7 @@ def transforms_cv2():
     return transform
 
 
-def transforms_pil(lower_bound=518):
+def transforms_pil(lower_bound=518, ensure_multiple_of=14):
     import torchvision.transforms.functional as TF
     from torchvision.transforms import Compose, Normalize, ToTensor, InterpolationMode
 
@@ -113,7 +113,7 @@ def transforms_pil(lower_bound=518):
             return x
 
     transform = Compose([
-        ModConstraintLowerBoundResize(lower_bound, ensure_multiple_of=14),
+        ModConstraintLowerBoundResize(lower_bound, ensure_multiple_of=ensure_multiple_of),
         ToTensor(),
         Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
