@@ -81,9 +81,11 @@ def transforms_cv2():
     return transform
 
 
-def transforms_pil(lower_bound=518, ensure_multiple_of=14):
+def transforms_pil(lower_bound=518, ensure_multiple_of=14, normalize=True, normalize_mode="imagenet"):
     import torchvision.transforms.functional as TF
     from torchvision.transforms import Compose, Normalize, ToTensor, InterpolationMode
+
+    assert normalize_mode in {"imagenet", "center"}
 
     class ModConstraintLowerBoundResize():
         def __init__(self, lower_bound=518, ensure_multiple_of=14):
@@ -112,10 +114,22 @@ def transforms_pil(lower_bound=518, ensure_multiple_of=14):
             x = TF.resize(x, (new_h, new_w), interpolation=InterpolationMode.BICUBIC, antialias=True)
             return x
 
+    class Identity():
+        def __call__(self, x):
+            return x
+
+    if normalize:
+        if normalize_mode == "imagenet":
+            normalize_transfrom = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        else:
+            normalize_transfrom = Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+    else:
+        normalize_transfrom = Identity()
+
     transform = Compose([
         ModConstraintLowerBoundResize(lower_bound, ensure_multiple_of=ensure_multiple_of),
         ToTensor(),
-        Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        normalize_transfrom,
     ])
     return transform
 
@@ -124,7 +138,10 @@ def _test_run():
     import argparse
     import torch.nn.functional as F
     import numpy as np
-
+    """
+    pytyon hubconf.py -i ./input.jpg -o ./output.png --pil
+    pytyon hubconf.py -i ./input.jpg -o ./output.png --pil --metric
+    """
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--input", "-i", type=str, required=True, help="input image file")
     parser.add_argument("--output", "-o", type=str, required=True, help="output image file")
@@ -138,30 +155,33 @@ def _test_run():
     parser.add_argument("--metric-model-type", default="indoor", choices=["indoor", "outdoor"],
                         help="model_type for metric depth")
     args = parser.parse_args()
+    if args.metric and not args.pil:
+        raise NotImplementedError("--metric requires --pil option")
+
+    if not args.metric:
+        model_name = "DepthAnything"
+        model_kwargs = dict(encoder=args.encoder)
+        transforms_pil_kwargs = {}
+    else:
+        model_name = "DepthAnythingMetricDepth"
+        model_kwargs = dict(model_type=args.metric_model_type, remove_prep=True)
+        transforms_pil_kwargs = dict(normalize_mode="center")
 
     if not args.remote:
-        if not args.metric:
-            model = torch.hub.load(".", "DepthAnything", encoder=args.encoder,
-                                   source="local", trust_repo=True).cuda()
-        else:
-            model = torch.hub.load(".", "DepthAnythingMetricDepth", model_type=args.metric_model_type,
-                                   source="local", trust_repo=True).cuda()
+        model = torch.hub.load(".", model_name, **model_kwargs,
+                               source="local", trust_repo=True).cuda()
         if args.pil:
-            transforms = torch.hub.load(".", "transforms_pil", source="local", trust_repo=True)
+            transforms = torch.hub.load(".", "transforms_pil",
+                                        **transforms_pil_kwargs, source="local", trust_repo=True)
         else:
             transforms = torch.hub.load(".", "transforms_cv2", source="local", trust_repo=True)
     else:
         force_reload = bool(args.reload)
-        if not args.metric:
-            model = torch.hub.load("nagadomi/Depth-Anything_iw3", "DepthAnything",
-                                   encoder=args.encoder,
-                                   force_reload=force_reload, trust_repo=True).cuda()
-        else:
-            model = torch.hub.load("nagadomi/Depth-Anything_iw3", "DepthAnythingMetricDepth",
-                                   model_type=args.metric_model_type,
-                                   force_reload=force_reload, trust_repo=True).cuda()
+        model = torch.hub.load("nagadomi/Depth-Anything_iw3", model_name, **model_kwargs,
+                               force_reload=force_reload, trust_repo=True).cuda()
         if args.pil:
-            transforms = torch.hub.load("nagadomi/Depth-Anything_iw3", "transforms_pil", trust_repo=True)
+            transforms = torch.hub.load("nagadomi/Depth-Anything_iw3", "transforms_pil",
+                                        **transforms_pil_kwargs, trust_repo=True)
         else:
             transforms = torch.hub.load("nagadomi/Depth-Anything_iw3", "transforms_cv2", trust_repo=True)
 
@@ -184,11 +204,19 @@ def _test_run():
         depth = model(image)
         if not args.metric:
             depth = depth.unsqueeze(0)
+            depth = (depth - depth.min()) / (depth.max() - depth.min() + 1e-6)
         else:
             depth = depth["metric_depth"].neg()
+            depth = (depth - depth.min()) / (depth.max() - depth.min() + 1e-6)
+            if True:  # False
+                c = 0.45  # 0.6-0.1, 0.6: indoor, 0.3: outdoor
+                c1 = 1.0 + c
+                min_v = c / c1
+                depth = ((c / (c1 - depth)) - min_v) / (1.0 - min_v)
+
         depth = F.interpolate(depth, (h, w), mode='bilinear', align_corners=False)
         depth = depth.squeeze(dim=[0, 1])
-        depth = (depth - depth.min()) / (depth.max() - depth.min() + 1e-6)
+        depth = torch.clamp(depth, 0, 1)
 
     if args.pil:
         import torchvision.transforms.functional as TF
