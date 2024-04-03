@@ -120,16 +120,16 @@ def transforms_pil(lower_bound=518, ensure_multiple_of=14, normalize=True, norma
 
     if normalize:
         if normalize_mode == "imagenet":
-            normalize_transfrom = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            normalize_transform = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         else:
-            normalize_transfrom = Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+            normalize_transform = Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
     else:
-        normalize_transfrom = Identity()
+        normalize_transform = Identity()
 
     transform = Compose([
         ModConstraintLowerBoundResize(lower_bound, ensure_multiple_of=ensure_multiple_of),
         ToTensor(),
-        normalize_transfrom,
+        normalize_transform,
     ])
     return transform
 
