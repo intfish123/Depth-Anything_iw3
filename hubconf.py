@@ -3,25 +3,41 @@ from os import path
 
 
 def _load_state_dict(encoder, **kwargs):
-    assert encoder in {"vits", "vitb", "vitl"}
-    file_name = f"depth_anything_{encoder}14.pth"
-    url = f"https://huggingface.co/spaces/LiheYoung/Depth-Anything/resolve/main/checkpoints/{file_name}?download=true"
-    state_dict = torch.hub.load_state_dict_from_url(url, file_name=file_name,
-                                                    weights_only=True, map_location=torch.device("cpu"))
-    return state_dict
+    if encoder in {"vits", "vitb", "vitl"}:
+        file_name = f"depth_anything_{encoder}14.pth"
+        url = f"https://huggingface.co/spaces/LiheYoung/Depth-Anything/resolve/main/checkpoints/{file_name}?download=true"
+        state_dict = torch.hub.load_state_dict_from_url(url, file_name=file_name,
+                                                        weights_only=True, map_location=torch.device("cpu"))
+        return state_dict
+    elif encoder in {"v2_vits"}:
+        file_name = f"depth_anything_{encoder}.pth"
+        url = f"https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/main/{file_name}?download=true"
+        state_dict = torch.hub.load_state_dict_from_url(url, file_name=file_name,
+                                                        weights_only=True, map_location=torch.device("cpu"))
+        return state_dict
+    elif encoder in {"v2_vitb", "v2_vitl"}:
+        file_name = f"depth_anything_{encoder}.pth"
+        checkpoint_path = path.join(torch.hub.get_dir(), "checkpoints", file_name)
+        if path.exists(checkpoint_path):
+            state_dict = torch.load(checkpoint_path, weights_only=True, map_location=torch.device("cpu"))
+            return state_dict
+        else:
+            raise RuntimeError(f"Please place the checkpoint file for cc-by-nc-4.0 yourself.\n{checkpoint_path}")
+    else:
+        raise ValueError(f"Unknown encoder {encoder}")
 
 
 def DepthAnything(encoder, localhub=True):
     from depth_anything.dpt import DPT_DINOv2
 
-    if encoder == 'vits':
-        depth_anything = DPT_DINOv2(encoder='vits', features=64, out_channels=[48, 96, 192, 384],
+    if encoder in {"vits", "v2_vits"}:
+        depth_anything = DPT_DINOv2(encoder=encoder, features=64, out_channels=[48, 96, 192, 384],
                                     localhub=localhub)
-    elif encoder == 'vitb':
-        depth_anything = DPT_DINOv2(encoder='vitb', features=128, out_channels=[96, 192, 384, 768],
+    elif encoder in {"vitb", "v2_vitb"}:
+        depth_anything = DPT_DINOv2(encoder=encoder, features=128, out_channels=[96, 192, 384, 768],
                                     localhub=localhub)
-    elif encoder == 'vitl':
-        depth_anything = DPT_DINOv2(encoder='vitl', features=256, out_channels=[256, 512, 1024, 1024],
+    elif encoder in {"vitl", "v2_vitl"}:
+        depth_anything = DPT_DINOv2(encoder=encoder, features=256, out_channels=[256, 512, 1024, 1024],
                                     localhub=localhub)
     else:
         raise ValueError(f"Unknown encoder {encoder}")
@@ -145,7 +161,8 @@ def _test_run():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--input", "-i", type=str, required=True, help="input image file")
     parser.add_argument("--output", "-o", type=str, required=True, help="output image file")
-    parser.add_argument("--encoder", type=str, default="vitb", choices=["vits", "vitb", "vitl"],
+    parser.add_argument("--encoder", type=str, default="vitb", choices=["vits", "vitb", "vitl",
+                                                                        "v2_vits", "v2_vitb", "v2_vitl"],
                         help="encoder for relative depth model")
     parser.add_argument("--fp16", action="store_true", help="use fp16")
     parser.add_argument("--remote", action="store_true", help="use remote repo")

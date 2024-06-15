@@ -138,29 +138,39 @@ class DPT_DINOv2(nn.Module):
     def __init__(self, encoder='vitl', features=256, out_channels=[256, 512, 1024, 1024], use_bn=False, use_clstoken=False, localhub=True):
         super(DPT_DINOv2, self).__init__()
         
-        assert encoder in ['vits', 'vitb', 'vitl']
-        
+        assert encoder in ["vits", "vitb", "vitl", "v2_vits", "v2_vitb", "v2_vitl"]
+        self.encoder = encoder
+        self.intermediate_layer_idx = {
+            'v2_vits': [2, 5, 8, 11],
+            'v2_vitb': [2, 5, 8, 11],
+            'v2_vitl': [4, 11, 17, 23],
+            'v2_vitg': [9, 19, 29, 39],
+            "vits": 4,
+            "vitb": 4,
+            "vitl": 4,
+        }
+        dino_encoder = encoder[3:] if encoder.startswith("v2_") else encoder
         # in case the Internet connection is not stable, please load the DINOv2 locally
         if localhub:
             dinov2_path = os.path.join(os.path.dirname(__file__), "..",
                                        "torchhub", "facebookresearch_dinov2_main")
-            self.pretrained = torch.hub.load(dinov2_path, 'dinov2_{:}14'.format(encoder), source='local', pretrained=False)
+            self.pretrained = torch.hub.load(dinov2_path, 'dinov2_{:}14'.format(dino_encoder), source='local', pretrained=False)
         else:
-            self.pretrained = torch.hub.load('facebookresearch/dinov2', 'dinov2_{:}14'.format(encoder))
+            self.pretrained = torch.hub.load('facebookresearch/dinov2', 'dinov2_{:}14'.format(dino_encoder))
         
-        dim = self.pretrained.blocks[0].attn.qkv.in_features
-        
-        self.depth_head = DPTHead(1, dim, features, use_bn, out_channels=out_channels, use_clstoken=use_clstoken)
+        self.depth_head = DPTHead(1, self.pretrained.embed_dim, features, use_bn,
+                                  out_channels=out_channels, use_clstoken=use_clstoken)
         
     def forward(self, x):
         h, w = x.shape[-2:]
         
-        features = self.pretrained.get_intermediate_layers(x, 4, return_class_token=True)
-        
+        features = self.pretrained.get_intermediate_layers(x, self.intermediate_layer_idx[self.encoder],
+                                                           return_class_token=True)
         patch_h, patch_w = h // 14, w // 14
 
         depth = self.depth_head(features, patch_h, patch_w)
-        depth = F.interpolate(depth, size=(h, w), mode="bilinear", align_corners=True)
+        if h != depth.shape[2] or w != depth.shape[3]:
+            depth = F.interpolate(depth, size=(h, w), mode="bilinear", align_corners=True)
         depth = F.relu(depth)
 
         return depth.squeeze(1)
