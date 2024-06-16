@@ -55,6 +55,25 @@ def DepthAnythingMetricDepth(model_type="indoor", remove_prep=True):
     return model
 
 
+def DepthAnythingMetricDepthV2(model_type="hypersim", localhub=True):
+    from depth_anything.dpt import DPT_DINOv2
+
+    assert model_type in {"hypersim", "vkitti"}
+
+    depth_anything = DPT_DINOv2(encoder="v2_vitl", features=256, out_channels=[256, 512, 1024, 1024],
+                                localhub=localhub, metric_depth=True)
+
+    file_name = f"depth_anything_v2_metric_{model_type}_vitl.pth"
+    checkpoint_path = path.join(torch.hub.get_dir(), "checkpoints", file_name)
+    if path.exists(checkpoint_path):
+        state_dict = torch.load(checkpoint_path, weights_only=True, map_location=torch.device("cpu"))
+        depth_anything.load_state_dict(state_dict, strict=True)
+    else:
+        raise RuntimeError(f"Please place the checkpoint file for cc-by-nc-4.0 yourself.\n{checkpoint_path}")
+
+    return depth_anything
+
+
 def transforms_cv2():
     from torchvision.transforms import Compose
     from depth_anything.util.transform import Resize, NormalizeImage, PrepareForNet
@@ -161,17 +180,20 @@ def _test_run():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--input", "-i", type=str, required=True, help="input image file")
     parser.add_argument("--output", "-o", type=str, required=True, help="output image file")
-    parser.add_argument("--encoder", type=str, default="vitb", choices=["vits", "vitb", "vitl",
-                                                                        "v2_vits", "v2_vitb", "v2_vitl"],
+    parser.add_argument("--encoder", type=str, default="vitb",
+                        choices=["vits", "vitb", "vitl", "v2_vits", "v2_vitb", "v2_vitl"],
                         help="encoder for relative depth model")
     parser.add_argument("--fp16", action="store_true", help="use fp16")
     parser.add_argument("--remote", action="store_true", help="use remote repo")
     parser.add_argument("--reload", action="store_true", help="reload remote repo")
     parser.add_argument("--pil", action="store_true", help="use PIL instead of OpenCV")
     parser.add_argument("--metric", action="store_true", help="use metric depth model")
-    parser.add_argument("--metric-model-type", default="indoor", choices=["indoor", "outdoor"],
+    parser.add_argument("--metric-model-type", default="indoor",
+                        choices=["indoor", "outdoor", "v2_indoor", "v2_outdoor"],
                         help="model_type for metric depth")
     args = parser.parse_args()
+    metric_v2 = args.metric and args.metric_model_type.startswith("v2_")
+
     if args.metric and not args.pil:
         raise NotImplementedError("--metric requires --pil option")
 
@@ -180,9 +202,15 @@ def _test_run():
         model_kwargs = dict(encoder=args.encoder)
         transforms_pil_kwargs = {}
     else:
-        model_name = "DepthAnythingMetricDepth"
-        model_kwargs = dict(model_type=args.metric_model_type, remove_prep=True)
-        transforms_pil_kwargs = dict(normalize_mode="center")
+        if metric_v2:
+            model_name = "DepthAnythingMetricDepthV2"
+            name_map = {"v2_indoor": "hypersim", "v2_outdoor": "vkitti"}
+            model_kwargs = dict(model_type=name_map[args.metric_model_type])
+            transforms_pil_kwargs = {}
+        else:
+            model_name = "DepthAnythingMetricDepth"
+            model_kwargs = dict(model_type=args.metric_model_type, remove_prep=True)
+            transforms_pil_kwargs = dict(normalize_mode="center")
 
     if not args.remote:
         model = torch.hub.load(".", model_name, **model_kwargs,
@@ -223,7 +251,8 @@ def _test_run():
             depth = depth.unsqueeze(0)
             depth = (depth - depth.min()) / (depth.max() - depth.min() + 1e-6)
         else:
-            depth = depth["metric_depth"].neg()
+            depth = depth.unsqueeze(0) if metric_v2 else depth["metric_depth"]
+            depth = depth.neg()
             depth = (depth - depth.min()) / (depth.max() - depth.min() + 1e-6)
             if True:  # False
                 c = 0.45  # 0.6-0.1, 0.6: indoor, 0.3: outdoor

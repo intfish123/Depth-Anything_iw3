@@ -18,7 +18,8 @@ def _make_fusion_block(features, use_bn, size = None):
 
 
 class DPTHead(nn.Module):
-    def __init__(self, nclass, in_channels, features=256, use_bn=False, out_channels=[256, 512, 1024, 1024], use_clstoken=False):
+    def __init__(self, nclass, in_channels, features=256, use_bn=False, out_channels=[256, 512, 1024, 1024], use_clstoken=False,
+                 metric_depth=False):
         super(DPTHead, self).__init__()
         
         self.nclass = nclass
@@ -89,12 +90,12 @@ class DPTHead(nn.Module):
             )
         else:
             self.scratch.output_conv1 = nn.Conv2d(head_features_1, head_features_1 // 2, kernel_size=3, stride=1, padding=1)
-            
+            act_func = nn.Sigmoid() if metric_depth else nn.ReLU(True)
             self.scratch.output_conv2 = nn.Sequential(
                 nn.Conv2d(head_features_1 // 2, head_features_2, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(True),
                 nn.Conv2d(head_features_2, 1, kernel_size=1, stride=1, padding=0),
-                nn.ReLU(True),
+                act_func,
                 nn.Identity(),
             )
             
@@ -135,10 +136,15 @@ class DPTHead(nn.Module):
         
         
 class DPT_DINOv2(nn.Module):
-    def __init__(self, encoder='vitl', features=256, out_channels=[256, 512, 1024, 1024], use_bn=False, use_clstoken=False, localhub=True):
+    def __init__(self, encoder='vitl', features=256, out_channels=[256, 512, 1024, 1024],
+                 use_bn=False, use_clstoken=False, localhub=True,
+                 metric_depth=False, max_depth=20.0,
+):
         super(DPT_DINOv2, self).__init__()
-        
+
         assert encoder in ["vits", "vitb", "vitl", "v2_vits", "v2_vitb", "v2_vitl"]
+        self.metric_depth = metric_depth
+        self.max_depth = max_depth
         self.encoder = encoder
         self.intermediate_layer_idx = {
             'v2_vits': [2, 5, 8, 11],
@@ -159,11 +165,11 @@ class DPT_DINOv2(nn.Module):
             self.pretrained = torch.hub.load('facebookresearch/dinov2', 'dinov2_{:}14'.format(dino_encoder))
         
         self.depth_head = DPTHead(1, self.pretrained.embed_dim, features, use_bn,
-                                  out_channels=out_channels, use_clstoken=use_clstoken)
-        
+                                  out_channels=out_channels, use_clstoken=use_clstoken, metric_depth=metric_depth)
+
     def forward(self, x):
         h, w = x.shape[-2:]
-        
+
         features = self.pretrained.get_intermediate_layers(x, self.intermediate_layer_idx[self.encoder],
                                                            return_class_token=True)
         patch_h, patch_w = h // 14, w // 14
@@ -171,7 +177,10 @@ class DPT_DINOv2(nn.Module):
         depth = self.depth_head(features, patch_h, patch_w)
         if h != depth.shape[2] or w != depth.shape[3]:
             depth = F.interpolate(depth, size=(h, w), mode="bilinear", align_corners=True)
-        depth = F.relu(depth)
+        if self.metric_depth:
+            depth = depth * self.max_depth
+        else:
+            depth = F.relu(depth)
 
         return depth.squeeze(1)
 
