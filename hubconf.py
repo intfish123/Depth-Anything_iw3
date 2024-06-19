@@ -59,9 +59,12 @@ def DepthAnythingMetricDepthV2(model_type="hypersim", localhub=True):
     from depth_anything.dpt import DPT_DINOv2
 
     assert model_type in {"hypersim", "vkitti"}
-
+    if model_type == "hypersim":
+        max_depth = 20.0
+    elif model_type == "vkitti":
+        max_depth = 80.0
     depth_anything = DPT_DINOv2(encoder="v2_vitl", features=256, out_channels=[256, 512, 1024, 1024],
-                                localhub=localhub, metric_depth=True)
+                                localhub=localhub, max_depth=max_depth, metric_depth=True)
 
     file_name = f"depth_anything_v2_metric_{model_type}_vitl.pth"
     checkpoint_path = path.join(torch.hub.get_dir(), "checkpoints", file_name)
