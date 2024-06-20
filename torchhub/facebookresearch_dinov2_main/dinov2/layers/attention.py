@@ -12,6 +12,7 @@ import logging
 
 from torch import Tensor
 from torch import nn
+import torch.nn.functional as F
 
 
 logger = logging.getLogger("dinov2")
@@ -42,21 +43,26 @@ class Attention(nn.Module):
         self.scale = head_dim**-0.5
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.attn_drop_p = attn_drop
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim, bias=proj_bias)
         self.proj_drop = nn.Dropout(proj_drop)
+        self.has_spda = hasattr(F, "scaled_dot_product_attention")
 
     def forward(self, x: Tensor) -> Tensor:
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-
         q, k, v = qkv[0] * self.scale, qkv[1], qkv[2]
-        attn = q @ k.transpose(-2, -1)
+        if self.has_spda:
+            x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop_p, scale=1.0)
+            x = x.permute(0, 2, 1, 3).reshape(B, N, C)
+        else:
+            attn = q @ k.transpose(-2, -1)
 
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
+            attn = attn.softmax(dim=-1)
+            attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+            x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
