@@ -134,27 +134,29 @@ class DPTHead(nn.Module):
         
         return out
         
-        
+
+_SETTINGS = {
+    "v2_vits": [64, [48, 96, 192, 384], [2, 5, 8, 11]],
+    "vits": [64, [48, 96, 192, 384], 4],
+    "v2_vitb": [128, [96, 192, 384, 768], [2, 5, 8, 11]],
+    "vitb": [128, [96, 192, 384, 768], 4],
+    "v2_vitl": [256, [256, 512, 1024, 1024], [4, 11, 17, 23]],
+    "vitl": [256, [256, 512, 1024, 1024], 4],
+}
+
 class DPT_DINOv2(nn.Module):
-    def __init__(self, encoder='vitl', features=256, out_channels=[256, 512, 1024, 1024],
+    def __init__(self, encoder='vitl',
                  use_bn=False, use_clstoken=False, localhub=True,
                  metric_depth=False, max_depth=20.0,
 ):
         super(DPT_DINOv2, self).__init__()
 
         assert encoder in ["vits", "vitb", "vitl", "v2_vits", "v2_vitb", "v2_vitl"]
+
+        features, out_channels, self.intermediate_layer_idx = _SETTINGS[encoder]
         self.metric_depth = metric_depth
         self.max_depth = max_depth
         self.encoder = encoder
-        self.intermediate_layer_idx = {
-            'v2_vits': [2, 5, 8, 11],
-            'v2_vitb': [2, 5, 8, 11],
-            'v2_vitl': [4, 11, 17, 23],
-            'v2_vitg': [9, 19, 29, 39],
-            "vits": 4,
-            "vitb": 4,
-            "vitl": 4,
-        }
         dino_encoder = encoder[3:] if encoder.startswith("v2_") else encoder
         # in case the Internet connection is not stable, please load the DINOv2 locally
         if localhub:
@@ -170,7 +172,7 @@ class DPT_DINOv2(nn.Module):
     def forward(self, x):
         h, w = x.shape[-2:]
 
-        features = self.pretrained.get_intermediate_layers(x, self.intermediate_layer_idx[self.encoder],
+        features = self.pretrained.get_intermediate_layers(x, self.intermediate_layer_idx,
                                                            return_class_token=True)
         patch_h, patch_w = h // 14, w // 14
 

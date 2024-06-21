@@ -2,46 +2,64 @@ import torch
 from os import path
 
 
-def _load_state_dict(encoder, **kwargs):
-    if encoder in {"vits", "vitb", "vitl"}:
-        file_name = f"depth_anything_{encoder}14.pth"
-        url = f"https://huggingface.co/spaces/LiheYoung/Depth-Anything/resolve/main/checkpoints/{file_name}?download=true"
-        state_dict = torch.hub.load_state_dict_from_url(url, file_name=file_name,
-                                                        weights_only=True, map_location=torch.device("cpu"))
-        return state_dict
-    elif encoder in {"v2_vits"}:
-        file_name = f"depth_anything_{encoder}.pth"
-        url = f"https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/main/{file_name}?download=true"
-        state_dict = torch.hub.load_state_dict_from_url(url, file_name=file_name,
-                                                        weights_only=True, map_location=torch.device("cpu"))
-        return state_dict
-    elif encoder in {"v2_vitb", "v2_vitl"}:
-        file_name = f"depth_anything_{encoder}.pth"
-        checkpoint_path = path.join(torch.hub.get_dir(), "checkpoints", file_name)
-        if path.exists(checkpoint_path):
-            state_dict = torch.load(checkpoint_path, weights_only=True, map_location=torch.device("cpu"))
+def _load_state_dict(encoder, model_type=None):
+    if model_type is None:
+        if encoder in {"vits", "vitb", "vitl"}:
+            file_name = f"depth_anything_{encoder}14.pth"
+            url = f"https://huggingface.co/spaces/LiheYoung/Depth-Anything/resolve/main/checkpoints/{file_name}?download=true"
+            state_dict = torch.hub.load_state_dict_from_url(url, file_name=file_name,
+                                                            weights_only=True, map_location=torch.device("cpu"))
+            return state_dict
+        elif encoder in {"v2_vits"}:
+            file_name = f"depth_anything_{encoder}.pth"
+            url = f"https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/main/{file_name}?download=true"
+            state_dict = torch.hub.load_state_dict_from_url(url, file_name=file_name,
+                                                            weights_only=True, map_location=torch.device("cpu"))
+            return state_dict
+        elif encoder in {"v2_vitb", "v2_vitl"}:
+            file_name = f"depth_anything_{encoder}.pth"
+            checkpoint_path = path.join(torch.hub.get_dir(), "checkpoints", file_name)
+            if path.exists(checkpoint_path):
+                state_dict = torch.load(checkpoint_path, weights_only=True, map_location=torch.device("cpu"))
+                return state_dict
+            else:
+                raise RuntimeError(f"Please place the checkpoint file for cc-by-nc-4.0 yourself.\n{checkpoint_path}")
+        else:
+            raise ValueError(f"Unknown encoder {encoder}")
+    else:
+        file_name = f"depth_anything_v2_metric_{model_type}_{encoder[3:]}.pth"
+        url = None
+        if model_type == "hypersim":
+            if encoder == "v2_vits":
+                url = f"https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Hypersim-Small/resolve/main/{file_name}?download=true"
+            elif encoder == "v2_vitb":
+                url = f"https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Hypersim-Base/resolve/main/{file_name}?download=true"
+        elif model_type == "vkitti":
+            if encoder == "v2_vits":
+                url = f"https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Small/resolve/main/{file_name}?download=true"
+            elif encoder == "v2_vitb":
+                url = f"https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Base/resolve/main/{file_name}?download=true"
+        else:
+            raise ValueError(f"Unknown encoder {encoder}")
+        if url is not None:
+            state_dict = torch.hub.load_state_dict_from_url(url, file_name=file_name,
+                                                            weights_only=True, map_location=torch.device("cpu"))
             return state_dict
         else:
-            raise RuntimeError(f"Please place the checkpoint file for cc-by-nc-4.0 yourself.\n{checkpoint_path}")
-    else:
-        raise ValueError(f"Unknown encoder {encoder}")
+            checkpoint_path = path.join(torch.hub.get_dir(), "checkpoints", file_name)
+            if path.exists(checkpoint_path):
+                state_dict = torch.load(checkpoint_path, weights_only=True, map_location=torch.device("cpu"))
+                return state_dict
+            else:
+                raise RuntimeError(f"Please place the checkpoint file for cc-by-nc-4.0 yourself.\n{checkpoint_path}")
 
 
 def DepthAnything(encoder, localhub=True):
     from depth_anything.dpt import DPT_DINOv2
 
-    if encoder in {"vits", "v2_vits"}:
-        depth_anything = DPT_DINOv2(encoder=encoder, features=64, out_channels=[48, 96, 192, 384],
-                                    localhub=localhub)
-    elif encoder in {"vitb", "v2_vitb"}:
-        depth_anything = DPT_DINOv2(encoder=encoder, features=128, out_channels=[96, 192, 384, 768],
-                                    localhub=localhub)
-    elif encoder in {"vitl", "v2_vitl"}:
-        depth_anything = DPT_DINOv2(encoder=encoder, features=256, out_channels=[256, 512, 1024, 1024],
-                                    localhub=localhub)
-    else:
-        raise ValueError(f"Unknown encoder {encoder}")
+    assert encoder in {"vits", "vitb", "vitl", "v2_vits", "v2_vitb", "v2_vitl"}
 
+    depth_anything = DPT_DINOv2(encoder=encoder, localhub=localhub)
     depth_anything.load_state_dict(_load_state_dict(encoder), strict=True)
 
     return depth_anything
@@ -57,22 +75,21 @@ def DepthAnythingMetricDepth(model_type="indoor", remove_prep=True):
 
 def DepthAnythingMetricDepthV2(model_type="hypersim", localhub=True):
     from depth_anything.dpt import DPT_DINOv2
+    model_type = "hypersim_l" if model_type == "hypersim" else model_type
+    model_type = "vkitti_l" if model_type == "vkitti" else model_type
+    assert model_type in {"hypersim_l", "hypersim_b", "hypersim_s",
+                          "vkitti_l", "vkitti_b", "vkitti_s"}
 
-    assert model_type in {"hypersim", "vkitti"}
-    if model_type == "hypersim":
+    encoder = {"l": "v2_vitl", "b": "v2_vitb", "s": "v2_vits"}[model_type[-1]]
+    if "hypersim" in model_type:
+        model_type = "hypersim"
         max_depth = 20.0
-    elif model_type == "vkitti":
-        max_depth = 80.0
-    depth_anything = DPT_DINOv2(encoder="v2_vitl", features=256, out_channels=[256, 512, 1024, 1024],
-                                localhub=localhub, max_depth=max_depth, metric_depth=True)
-
-    file_name = f"depth_anything_v2_metric_{model_type}_vitl.pth"
-    checkpoint_path = path.join(torch.hub.get_dir(), "checkpoints", file_name)
-    if path.exists(checkpoint_path):
-        state_dict = torch.load(checkpoint_path, weights_only=True, map_location=torch.device("cpu"))
-        depth_anything.load_state_dict(state_dict, strict=True)
     else:
-        raise RuntimeError(f"Please place the checkpoint file for cc-by-nc-4.0 yourself.\n{checkpoint_path}")
+        model_type = "vkitti"
+        max_depth = 80.0
+
+    depth_anything = DPT_DINOv2(encoder=encoder, localhub=localhub, max_depth=max_depth, metric_depth=True)
+    depth_anything.load_state_dict(_load_state_dict(encoder, model_type), strict=True)
 
     return depth_anything
 
@@ -192,10 +209,12 @@ def _test_run():
     parser.add_argument("--pil", action="store_true", help="use PIL instead of OpenCV")
     parser.add_argument("--metric", action="store_true", help="use metric depth model")
     parser.add_argument("--metric-model-type", default="indoor",
-                        choices=["indoor", "outdoor", "v2_indoor", "v2_outdoor"],
+                        choices=["indoor", "outdoor",
+                                 "hypersim_s", "hypersim_b", "hypersim_l", "hypersim",
+                                 "vkitti_s", "vkitti_b", "vkitti_l", "vkitti"],
                         help="model_type for metric depth")
     args = parser.parse_args()
-    metric_v2 = args.metric and args.metric_model_type.startswith("v2_")
+    metric_v2 = args.metric and ("hypersim" in args.metric_model_type or "vkitti" in args.metric_model_type)
 
     if args.metric and not args.pil:
         raise NotImplementedError("--metric requires --pil option")
@@ -207,8 +226,7 @@ def _test_run():
     else:
         if metric_v2:
             model_name = "DepthAnythingMetricDepthV2"
-            name_map = {"v2_indoor": "hypersim", "v2_outdoor": "vkitti"}
-            model_kwargs = dict(model_type=name_map[args.metric_model_type])
+            model_kwargs = dict(model_type=args.metric_model_type)
             transforms_pil_kwargs = {}
         else:
             model_name = "DepthAnythingMetricDepth"
@@ -255,6 +273,12 @@ def _test_run():
             depth = (depth - depth.min()) / (depth.max() - depth.min() + 1e-6)
         else:
             depth = depth.unsqueeze(0) if metric_v2 else depth["metric_depth"]
+            """
+            if "hypersim" in args.metric_model_type:
+                depth = 1. - depth / 20
+            elif "vkitti" in args.metric_model_type:
+                depth = 1. - depth / 80
+            """
             depth = depth.neg()
             depth = (depth - depth.min()) / (depth.max() - depth.min() + 1e-6)
             if True:  # False
