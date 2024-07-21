@@ -54,7 +54,11 @@ class Attention(nn.Module):
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0] * self.scale, qkv[1], qkv[2]
         if self.has_sdpa:
-            x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop_p, scale=1.0)
+            x = F.scaled_dot_product_attention(
+                q, k, v,
+                # https://github.com/pytorch/pytorch/issues/124464
+                dropout_p=self.attn_drop_p if self.training else 0.,
+                scale=1.0)
             x = x.permute(0, 2, 1, 3).reshape(B, N, C)
         else:
             attn = q @ k.transpose(-2, -1)
