@@ -110,7 +110,10 @@ class DPTHead(nn.Module):
                 x = x[0]
             
             x = x.permute(0, 2, 1).reshape((x.shape[0], x.shape[-1], patch_h, patch_w))
-            
+            if x.device.type == "mps":
+                # NOTE: Already using reshape but still reporting memory layout error on MPS.
+                #       Probably a bug in MPS backend.
+                x = x.contiguous()
             x = self.projects[i](x)
             x = self.resize_layers[i](x)
             
