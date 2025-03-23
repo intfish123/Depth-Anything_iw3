@@ -44,12 +44,12 @@ def _load_state_dict(encoder, model_type=None):
                 url = f"https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Base/resolve/main/{file_name}?download=true"
         elif model_type == "distill_any_depth":
             if encoder == "v2_vits":
-                file_name = "distill_any_depth_vits14.safetensors"
+                file_name = "distill_any_depth_vits.safetensors"
                 url = "https://huggingface.co/xingyang1/Distill-Any-Depth/resolve/main/small/model.safetensors?download=true"
             elif encoder == "v2_vitb":
-                file_name = "distill_any_depth_vitb14.safetensors"
+                file_name = "distill_any_depth_vitb.safetensors"
             elif encoder == "v2_vitl":
-                file_name = "distill_any_depth_vitl14.safetensors"
+                file_name = "distill_any_depth_vitl.safetensors"
 
                 def _patch(state_dict):
                     state_dict_new = {}
