@@ -27,40 +27,88 @@ def _load_state_dict(encoder, model_type=None):
         else:
             raise ValueError(f"Unknown encoder {encoder}")
     else:
-        file_name = f"depth_anything_v2_metric_{model_type}_{encoder[3:]}.pth"
+        file_name = None
         url = None
+        patch = None
         if model_type == "hypersim":
+            file_name = f"depth_anything_v2_metric_{model_type}_{encoder[3:]}.pth"
             if encoder == "v2_vits":
                 url = f"https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Hypersim-Small/resolve/main/{file_name}?download=true"
             elif encoder == "v2_vitb":
                 url = f"https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-Hypersim-Base/resolve/main/{file_name}?download=true"
         elif model_type == "vkitti":
+            file_name = f"depth_anything_v2_metric_{model_type}_{encoder[3:]}.pth"
             if encoder == "v2_vits":
                 url = f"https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Small/resolve/main/{file_name}?download=true"
             elif encoder == "v2_vitb":
                 url = f"https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Base/resolve/main/{file_name}?download=true"
+        elif model_type == "distill_any_depth":
+            if encoder == "v2_vits":
+                file_name = "distill_any_depth_vits14.safetensors"
+                url = "https://huggingface.co/xingyang1/Distill-Any-Depth/resolve/main/small/model.safetensors?download=true"
+            elif encoder == "v2_vitb":
+                file_name = "distill_any_depth_vitb14.safetensors"
+            elif encoder == "v2_vitl":
+                file_name = "distill_any_depth_vitl14.safetensors"
+
+                def _patch(state_dict):
+                    state_dict_new = {}
+                    for key in state_dict:
+                        new_key = key.replace("backbone.blocks.0.", "pretrained.blocks.").replace("backbone.", "pretrained.")
+                        state_dict_new[new_key] = state_dict[key]
+                    return state_dict_new
+                patch = _patch
+            else:
+                raise ValueError(f"Unknown encoder {model_type} {encoder}")
         else:
             raise ValueError(f"Unknown encoder {encoder}")
+
         if url is not None:
-            state_dict = torch.hub.load_state_dict_from_url(url, file_name=file_name,
-                                                            weights_only=True, map_location=torch.device("cpu"))
+            if ".safetensors" in url:
+                import safetensors.torch
+                checkpoint_path = path.join(torch.hub.get_dir(), "checkpoints", file_name)
+                if not path.exists(checkpoint_path):
+                    torch.hub.download_url_to_file(url, checkpoint_path)
+                state_dict = safetensors.torch.load_file(checkpoint_path, device="cpu")
+            else:
+                state_dict = torch.hub.load_state_dict_from_url(url, file_name=file_name,
+                                                                weights_only=True, map_location=torch.device("cpu"))
+            if callable(patch):
+                state_dict = patch(state_dict)
             return state_dict
         else:
             checkpoint_path = path.join(torch.hub.get_dir(), "checkpoints", file_name)
             if path.exists(checkpoint_path):
-                state_dict = torch.load(checkpoint_path, weights_only=True, map_location=torch.device("cpu"))
+                if file_name.endswith(".safetensors"):
+                    import safetensors.torch
+                    state_dict = safetensors.torch.load_file(checkpoint_path, device="cpu")
+                else:
+                    state_dict = torch.load(checkpoint_path, weights_only=True, map_location=torch.device("cpu"))
+                if callable(patch):
+                    state_dict = patch(state_dict)
                 return state_dict
             else:
-                raise RuntimeError(f"Please place the checkpoint file for cc-by-nc-4.0 yourself.\n{checkpoint_path}")
+                raise RuntimeError(f"Please place the checkpoint file yourself.\n{checkpoint_path}")
 
 
-def DepthAnything(encoder, localhub=True):
+def DepthAnything(encoder, model_type=None, localhub=True):
     from depth_anything.dpt import DPT_DINOv2
-
     assert encoder in {"vits", "vitb", "vitl", "v2_vits", "v2_vitb", "v2_vitl"}
 
     depth_anything = DPT_DINOv2(encoder=encoder, localhub=localhub)
-    depth_anything.load_state_dict(_load_state_dict(encoder), strict=True)
+    depth_anything.load_state_dict(_load_state_dict(encoder, model_type), strict=True)
+
+    return depth_anything
+
+
+def DistillAnyDepth(encoder, localhub=True):
+    """ https://github.com/Westlake-AGI-Lab/Distill-Any-Depth
+    """
+    from depth_anything.dpt import DPT_DINOv2
+    assert encoder in {"v2_vits", "v2_vitb", "v2_vitl"}
+
+    depth_anything = DPT_DINOv2(encoder=encoder, localhub=localhub)
+    depth_anything.load_state_dict(_load_state_dict(encoder, model_type="distill_any_depth"), strict=True)
 
     return depth_anything
 
